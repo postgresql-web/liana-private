@@ -12,13 +12,12 @@ export async function PUT(request: NextRequest) {
     }
 
     const dataStore = getDataStore()
-    const user = dataStore.getUser(username)
+    const user = await dataStore.getUser(username)
 
     if (!user) {
       return NextResponse.json({ error: "Пользователь не найден" }, { status: 404 })
     }
 
-    // Verify current password if changing password
     if (newPassword) {
       if (!currentPassword || user.password !== currentPassword) {
         return NextResponse.json({ error: "Неверный текущий пароль" }, { status: 401 })
@@ -30,7 +29,7 @@ export async function PUT(request: NextRequest) {
     if (email) updates.email = email
     if (newPassword) updates.password = newPassword
 
-    const updatedUser = dataStore.updateUser(username, updates)
+    const updatedUser = await dataStore.updateUser(username, updates)
 
     if (!updatedUser) {
       return NextResponse.json({ error: "Ошибка обновления профиля" }, { status: 500 })

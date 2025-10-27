@@ -1,42 +1,23 @@
 import "server-only"
-import Database from "better-sqlite3"
-import { join } from "path"
-import { existsSync, mkdirSync } from "fs"
+import { createClient } from "@supabase/supabase-js"
 
-let db: Database.Database | null = null
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+let supabaseAdmin: ReturnType<typeof createClient> | null = null
 
 export function getDb() {
-  if (!db) {
-    const dbDir = process.env.DATABASE_DIR || join(process.cwd(), "data")
-    const dbPath = process.env.DATABASE_PATH || join(dbDir, "database.sqlite")
-
-    if (!existsSync(dbDir)) {
-      mkdirSync(dbDir, { recursive: true })
-    }
-
-    db = new Database(dbPath)
-
-    // Enable WAL mode for better concurrent access
-    db.pragma("journal_mode = WAL")
-
-    // Initialize database schema
-    initializeSchema()
+  if (!supabaseAdmin) {
+    supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    })
   }
-  return db
+  return supabaseAdmin
 }
 
-function initializeSchema() {
-  const db = getDb()
-
-  // Create indexes for better performance on CRM tables
-  db.exec(`
-    CREATE INDEX IF NOT EXISTS idx_crm_clients_call_status ON crm_clients(call_status);
-    CREATE INDEX IF NOT EXISTS idx_crm_properties_status ON crm_properties(status);
-    CREATE INDEX IF NOT EXISTS idx_crm_showings_date ON crm_showings(date);
-  `)
-}
-
-// Helper function to format price in UAH
 export function formatPrice(price: number): string {
   if (price >= 1000000) {
     return `${(price / 1000000).toFixed(1)} млн`
@@ -44,7 +25,6 @@ export function formatPrice(price: number): string {
   return price.toLocaleString("uk-UA")
 }
 
-// Types
 export interface Admin {
   id: number
   username: string

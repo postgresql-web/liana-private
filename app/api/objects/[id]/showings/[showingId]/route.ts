@@ -8,7 +8,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const data = await request.json()
     const dataStore = getDataStore()
 
-    const updatedShowing = dataStore.updateShowing(params.showingId, data)
+    const updatedShowing = await dataStore.updateShowing(params.showingId, data)
 
     if (!updatedShowing) {
       return NextResponse.json({ error: "Показ не найден" }, { status: 404 })
@@ -24,7 +24,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 export async function DELETE(request: NextRequest, { params }: { params: { id: string; showingId: string } }) {
   try {
     const dataStore = getDataStore()
-    const success = dataStore.deleteShowing(params.showingId)
+    const success = await dataStore.deleteShowing(params.showingId)
 
     if (!success) {
       return NextResponse.json({ error: "Показ не найден" }, { status: 404 })

@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     }
 
     const dataStore = getDataStore()
-    const clients = dataStore.getClients(filters)
+    const clients = await dataStore.getClients()
     return NextResponse.json(clients)
   } catch (error) {
     console.error("[v0] Get clients error:", error)
@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     const dataStore = getDataStore()
-    const newClient = dataStore.createClient({
+    const newClient = await dataStore.createClient({
       name: data.name,
       phone: data.phone,
       callStatus: data.callStatus || "not_called",
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const username = request.headers.get("x-admin-username") || "Unknown"
     const ipAddress = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "Unknown"
 
-    dataStore.logAdminAction({
+    await dataStore.logAdminAction({
       adminUsername: username,
       action: "Створено клієнта",
       details: `Клієнт ${data.name} - ${data.phone}`,

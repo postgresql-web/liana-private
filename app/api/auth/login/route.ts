@@ -13,15 +13,15 @@ export async function POST(request: NextRequest) {
     }
 
     const dataStore = getDataStore()
-    const user = dataStore.getUser(username)
+    const user = await dataStore.getUser(username)
 
-    if (!user || !dataStore.verifyUserPassword(username, password)) {
+    if (!user || !(await dataStore.verifyUserPassword(username, password))) {
       return NextResponse.json({ error: "Невірне ім'я користувача або пароль" }, { status: 401 })
     }
 
     const token = createAuthToken(username)
 
-    dataStore.logAdminAction({
+    await dataStore.logAdminAction({
       adminUsername: username,
       action: "Вхід в систему",
       details: `Адміністратор ${user.fullName} увійшов в систему`,

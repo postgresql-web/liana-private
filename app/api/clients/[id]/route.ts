@@ -6,7 +6,7 @@ export const runtime = "nodejs"
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const dataStore = getDataStore()
-    const client = dataStore.getClient(params.id)
+    const client = await dataStore.getClient(params.id)
 
     if (!client) {
       return NextResponse.json({ error: "Клієнт не знайдено" }, { status: 404 })
@@ -24,7 +24,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const data = await request.json()
     const dataStore = getDataStore()
 
-    const updatedClient = dataStore.updateClient(params.id, {
+    const updatedClient = await dataStore.updateClient(params.id, {
       name: data.name,
       phone: data.phone,
       callStatus: data.callStatus,
@@ -45,7 +45,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       request.headers.get("cf-connecting-ip") ||
       "Unknown"
 
-    dataStore.logAdminAction({
+    await dataStore.logAdminAction({
       adminUsername: username,
       action: "Оновлено клієнта",
       details: `Клієнт ${data.name} - ${data.phone}`,
@@ -62,13 +62,13 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 export async function DELETE(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const dataStore = getDataStore()
-    const client = dataStore.getClient(params.id)
+    const client = await dataStore.getClient(params.id)
 
     if (!client) {
       return NextResponse.json({ error: "Клієнт не знайдено" }, { status: 404 })
     }
 
-    dataStore.deleteClient(params.id)
+    await dataStore.deleteClient(params.id)
 
     const username = request.headers.get("x-admin-username") || "Unknown"
     const ipAddress =
@@ -77,7 +77,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       request.headers.get("cf-connecting-ip") ||
       "Unknown"
 
-    dataStore.logAdminAction({
+    await dataStore.logAdminAction({
       adminUsername: username,
       action: "Видалено клієнта",
       details: `Клієнт ${client.name} - ${client.phone}`,

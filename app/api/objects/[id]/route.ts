@@ -6,7 +6,7 @@ export const runtime = "nodejs"
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const dataStore = getDataStore()
-    const property = dataStore.getProperty(params.id)
+    const property = await dataStore.getProperty(params.id)
 
     if (!property) {
       return NextResponse.json({ error: "Об'єкт не знайдено" }, { status: 404 })
@@ -24,7 +24,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const data = await request.json()
     const dataStore = getDataStore()
 
-    const updatedProperty = dataStore.updateProperty(params.id, data)
+    const updatedProperty = await dataStore.updateProperty(params.id, data)
 
     if (!updatedProperty) {
       return NextResponse.json({ error: "Об'єкт не знайдено" }, { status: 404 })
@@ -33,7 +33,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     const username = request.headers.get("x-admin-username") || "Unknown"
     const ipAddress = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "Unknown"
 
-    dataStore.logAdminAction({
+    await dataStore.logAdminAction({
       adminUsername: username,
       action: "Оновлено об'єкт",
       details: `Об'єкт ${params.id} - ${data.address || updatedProperty.address}`,
@@ -51,8 +51,8 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
   try {
     const dataStore = getDataStore()
 
-    const property = dataStore.getProperty(params.id)
-    const success = dataStore.deleteProperty(params.id)
+    const property = await dataStore.getProperty(params.id)
+    const success = await dataStore.deleteProperty(params.id)
 
     if (!success) {
       return NextResponse.json({ error: "Об'єкт не знайдено" }, { status: 404 })
@@ -61,7 +61,7 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     const username = request.headers.get("x-admin-username") || "Unknown"
     const ipAddress = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "Unknown"
 
-    dataStore.logAdminAction({
+    await dataStore.logAdminAction({
       adminUsername: username,
       action: "Видалено об'єкт",
       details: `Об'єкт ${params.id} - ${property?.address || "Unknown"}`,

@@ -7,7 +7,7 @@ export const runtime = "nodejs"
 export async function GET() {
   try {
     const dataStore = getDataStore()
-    const properties = dataStore.getProperties()
+    const properties = await dataStore.getProperties()
     return NextResponse.json(properties)
   } catch (error) {
     console.error("[v0] Get properties error:", error)
@@ -36,11 +36,11 @@ export async function POST(request: NextRequest) {
     const dataStore = getDataStore()
 
     // Check if ID already exists
-    if (dataStore.getProperty(data.id)) {
+    if (await dataStore.getProperty(data.id)) {
       return NextResponse.json({ error: "Об'єкт з таким ID вже існує" }, { status: 400 })
     }
 
-    const newProperty = dataStore.createProperty({
+    const newProperty = await dataStore.createProperty({
       ...data,
       owner: data.owner || "",
       ownerPhone: data.ownerPhone || "",
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     const username = request.headers.get("x-admin-username") || "Unknown"
     const ipAddress = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "Unknown"
 
-    dataStore.logAdminAction({
+    await dataStore.logAdminAction({
       adminUsername: username,
       action: "Створено об'єкт",
       details: `Об'єкт ${data.id} - ${data.address}`,

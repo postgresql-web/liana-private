@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     }
 
     const dataStore = getDataStore()
-    const user = dataStore.getUser(tokenData.username)
+    const user = await dataStore.getUser(tokenData.username)
 
     if (!user) {
       return NextResponse.json({ authenticated: false, error: "User not found" }, { status: 401 })

@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const dataStore = getDataStore()
-    const usernames = dataStore.getAllAdminUsernames()
+    const usernames = await dataStore.getAllAdminUsernames()
 
     return NextResponse.json({ usernames })
   } catch (error) {

@@ -6,7 +6,6 @@ export const runtime = "nodejs"
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify authentication
     const authToken = request.cookies.get("authToken")?.value
 
     if (!authToken || !verifyAuthToken(authToken)) {
@@ -14,7 +13,7 @@ export async function POST(request: NextRequest) {
     }
 
     const dataStore = getDataStore()
-    dataStore.clearAllData()
+    await dataStore.clearAllData()
 
     return NextResponse.json({ success: true, message: "База данных успешно очищена" })
   } catch (error) {

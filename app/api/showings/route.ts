@@ -6,7 +6,7 @@ export const runtime = "nodejs"
 export async function GET() {
   try {
     const dataStore = getDataStore()
-    const showings = dataStore.getShowings()
+    const showings = await dataStore.getShowings()
     return NextResponse.json(showings)
   } catch (error) {
     console.error("[v0] Get showings error:", error)

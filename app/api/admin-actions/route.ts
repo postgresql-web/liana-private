@@ -18,11 +18,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Заполните все обязательные поля" }, { status: 400 })
     }
 
-    // Get IP address from request
     const ipAddress = request.headers.get("x-forwarded-for") || request.headers.get("x-real-ip") || "Unknown"
 
     const dataStore = getDataStore()
-    const newAction = dataStore.logAdminAction({
+    const newAction = await dataStore.logAdminAction({
       adminUsername,
       action,
       details,
@@ -47,7 +46,7 @@ export async function GET(request: NextRequest) {
     const username = searchParams.get("username")
 
     const dataStore = getDataStore()
-    const actions = username ? dataStore.getAdminActions(username) : dataStore.getAdminActions()
+    const actions = username ? await dataStore.getAdminActions(username) : await dataStore.getAdminActions()
 
     return NextResponse.json({ actions })
   } catch (error) {

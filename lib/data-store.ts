@@ -75,113 +75,37 @@ function verifyPassword(password: string, hash: string): boolean {
   }
 }
 
-// Data store class using SQLite
 class DataStore {
   constructor() {
     this.initializeDatabase()
   }
 
-  private initializeDatabase() {
+  private async initializeDatabase() {
     const db = getDb()
 
-    // Create users table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS crm_users (
-        username TEXT PRIMARY KEY,
-        password TEXT NOT NULL,
-        full_name TEXT NOT NULL,
-        email TEXT NOT NULL,
-        role TEXT CHECK(role IN ('admin', 'user')) DEFAULT 'user',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
+    const { data: users, error } = await db
+      .from("crm_users")
+      .select("username")
+      .limit(1)
 
-    // Create properties table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS crm_properties (
-        id TEXT PRIMARY KEY,
-        address TEXT NOT NULL,
-        type TEXT CHECK(type IN ('apartment', 'house')) NOT NULL,
-        status TEXT CHECK(status IN ('available', 'reserved', 'sold')) NOT NULL,
-        price REAL NOT NULL,
-        area REAL NOT NULL,
-        rooms INTEGER,
-        floor INTEGER,
-        total_floors INTEGER,
-        owner TEXT,
-        owner_phone TEXT,
-        description TEXT,
-        inventory TEXT,
-        has_furniture INTEGER DEFAULT 0,
-        photos TEXT,
-        main_photo_index INTEGER DEFAULT 0,
-        notes TEXT,
-        tags TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-
-    // Create clients table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS crm_clients (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        phone TEXT NOT NULL,
-        call_status TEXT CHECK(call_status IN ('not_called', 'reached', 'not_reached')) DEFAULT 'not_called',
-        type TEXT CHECK(type IN ('buyer', 'both')) DEFAULT 'buyer',
-        status TEXT CHECK(status IN ('active', 'inactive', 'completed')) DEFAULT 'active',
-        budget TEXT,
-        notes TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-
-    // Create showings table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS crm_showings (
-        id TEXT PRIMARY KEY,
-        object_id TEXT NOT NULL,
-        date TEXT NOT NULL,
-        time TEXT NOT NULL,
-        notes TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (object_id) REFERENCES crm_properties(id) ON DELETE CASCADE
-      )
-    `)
-
-    // Create admin actions table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS crm_admin_actions (
-        id TEXT PRIMARY KEY,
-        admin_username TEXT NOT NULL,
-        action TEXT NOT NULL,
-        details TEXT NOT NULL,
-        ip_address TEXT NOT NULL,
-        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-
-    // Insert default users if they don't exist
-    const userCount = db.prepare("SELECT COUNT(*) as count FROM crm_users").get() as { count: number }
-    if (userCount.count === 0) {
-      const insertUser = db.prepare(
-        "INSERT INTO crm_users (username, password, full_name, email, role) VALUES (?, ?, ?, ?, ?)",
-      )
-      insertUser.run("admin", hashPassword("admin123"), "Адміністратор", "admin@liana.ua", "admin")
-      insertUser.run("Elena", hashPassword("12345"), "Олена", "elena@liana.ua", "admin")
-      insertUser.run("Anna", hashPassword("09876"), "Анна", "anna@liana.ua", "admin")
+    if (!error && (!users || users.length === 0)) {
+      await db.from("crm_users").insert([
+        { username: "admin", password: hashPassword("admin123"), full_name: "Адміністратор", email: "admin@liana.ua", role: "admin" },
+        { username: "Elena", password: hashPassword("12345"), full_name: "Олена", email: "elena@liana.ua", role: "admin" },
+        { username: "Anna", password: hashPassword("09876"), full_name: "Анна", email: "anna@liana.ua", role: "admin" }
+      ])
     }
   }
 
-  clearAllData() {
+  async clearAllData() {
     const db = getDb()
-    db.exec("DELETE FROM crm_properties")
-    db.exec("DELETE FROM crm_clients")
-    db.exec("DELETE FROM crm_showings")
-    db.exec("DELETE FROM crm_admin_actions")
+    await db.from("crm_properties").delete().neq("id", "")
+    await db.from("crm_clients").delete().neq("id", "")
+    await db.from("crm_showings").delete().neq("id", "")
+    await db.from("crm_admin_actions").delete().neq("id", "")
   }
 
-  logAdminAction(action: Omit<AdminAction, "id" | "timestamp">) {
+  async logAdminAction(action: Omit<AdminAction, "id" | "timestamp">) {
     const db = getDb()
     const newAction: AdminAction = {
       ...action,
@@ -189,196 +113,242 @@ class DataStore {
       timestamp: new Date().toISOString(),
     }
 
-    const stmt = db.prepare(
-      "INSERT INTO crm_admin_actions (id, admin_username, action, details, ip_address, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-    )
-    stmt.run(
-      newAction.id,
-      newAction.adminUsername,
-      newAction.action,
-      newAction.details,
-      newAction.ipAddress,
-      newAction.timestamp,
-    )
+    await db.from("crm_admin_actions").insert({
+      id: newAction.id,
+      admin_username: newAction.adminUsername,
+      action: newAction.action,
+      details: newAction.details,
+      ip_address: newAction.ipAddress,
+      timestamp: newAction.timestamp,
+    })
 
     return newAction
   }
 
-  getAdminActions(username?: string) {
+  async getAdminActions(username?: string) {
     const db = getDb()
-    let query = "SELECT * FROM crm_admin_actions"
-    const params: any[] = []
+    let query = db.from("crm_admin_actions").select("*").order("timestamp", { ascending: false })
 
     if (username) {
-      query += " WHERE admin_username = ?"
-      params.push(username)
+      query = query.eq("admin_username", username)
     }
 
-    query += " ORDER BY timestamp DESC"
+    const { data, error } = await query
 
-    const stmt = db.prepare(query)
-    return stmt.all(...params) as AdminAction[]
+    if (error || !data) return []
+
+    return data.map(row => ({
+      id: row.id,
+      adminUsername: row.admin_username,
+      action: row.action,
+      details: row.details,
+      ipAddress: row.ip_address,
+      timestamp: row.timestamp,
+    }))
   }
 
-  getAllAdminUsernames() {
+  async getAllAdminUsernames() {
     const db = getDb()
-    const stmt = db.prepare("SELECT DISTINCT admin_username FROM crm_admin_actions")
-    const rows = stmt.all() as { admin_username: string }[]
-    return rows.map((r) => r.admin_username)
+    const { data, error } = await db
+      .from("crm_admin_actions")
+      .select("admin_username")
+
+    if (error || !data) return []
+
+    const uniqueUsernames = [...new Set(data.map(row => row.admin_username))]
+    return uniqueUsernames
   }
 
-  // Properties
-  getProperties() {
+  async getProperties(): Promise<Property[]> {
     const db = getDb()
-    const stmt = db.prepare("SELECT * FROM crm_properties ORDER BY created_at DESC")
-    const rows = stmt.all() as any[]
+    const { data, error } = await db
+      .from("crm_properties")
+      .select("*")
+      .order("created_at", { ascending: false })
 
-    return rows.map((row) => ({
-      ...row,
-      hasFurniture: Boolean(row.has_furniture),
+    if (error || !data) return []
+
+    return data.map((row: any) => ({
+      id: row.id,
+      address: row.address,
+      type: row.type,
+      status: row.status,
+      price: Number(row.price),
+      area: Number(row.area),
+      rooms: row.rooms,
+      floor: row.floor,
       totalFloors: row.total_floors,
+      owner: row.owner,
       ownerPhone: row.owner_phone,
+      description: row.description,
+      inventory: row.inventory,
+      hasFurniture: row.has_furniture,
+      photos: row.photos || [],
       mainPhotoIndex: row.main_photo_index || 0,
+      notes: row.notes,
+      tags: row.tags || [],
       createdAt: row.created_at,
-      photos: row.photos ? JSON.parse(row.photos) : [],
-      tags: row.tags ? JSON.parse(row.tags) : [],
-    })) as Property[]
+    }))
   }
 
-  getProperty(id: string) {
+  async getProperty(id: string): Promise<Property | null> {
     const db = getDb()
-    const stmt = db.prepare("SELECT * FROM crm_properties WHERE id = ?")
-    const row = stmt.get(id) as any
+    const { data, error } = await db
+      .from("crm_properties")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle()
 
-    if (!row) return null
+    if (error || !data) return null
 
     return {
-      ...row,
-      hasFurniture: Boolean(row.has_furniture),
-      totalFloors: row.total_floors,
-      ownerPhone: row.owner_phone,
-      mainPhotoIndex: row.main_photo_index || 0,
-      createdAt: row.created_at,
-      photos: row.photos ? JSON.parse(row.photos) : [],
-      tags: row.tags ? JSON.parse(row.tags) : [],
+      id: data.id,
+      address: data.address,
+      type: data.type,
+      status: data.status,
+      price: Number(data.price),
+      area: Number(data.area),
+      rooms: data.rooms,
+      floor: data.floor,
+      totalFloors: data.total_floors,
+      owner: data.owner,
+      ownerPhone: data.owner_phone,
+      description: data.description,
+      inventory: data.inventory,
+      hasFurniture: data.has_furniture,
+      photos: data.photos || [],
+      mainPhotoIndex: data.main_photo_index || 0,
+      notes: data.notes,
+      tags: data.tags || [],
+      createdAt: data.created_at,
     } as Property
   }
 
-  createProperty(property: Omit<Property, "createdAt">) {
+  async createProperty(property: Omit<Property, "createdAt">) {
     const db = getDb()
     const newProperty = {
       ...property,
       createdAt: new Date().toISOString(),
     }
 
-    const stmt = db.prepare(`
-      INSERT INTO crm_properties (id, address, type, status, price, area, rooms, floor, total_floors, owner, owner_phone, description, inventory, has_furniture, photos, main_photo_index, notes, tags, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
+    const { error } = await db.from("crm_properties").insert({
+      id: newProperty.id,
+      address: newProperty.address,
+      type: newProperty.type,
+      status: newProperty.status,
+      price: newProperty.price,
+      area: newProperty.area,
+      rooms: newProperty.rooms,
+      floor: newProperty.floor,
+      total_floors: newProperty.totalFloors,
+      owner: newProperty.owner,
+      owner_phone: newProperty.ownerPhone,
+      description: newProperty.description,
+      inventory: newProperty.inventory,
+      has_furniture: newProperty.hasFurniture,
+      photos: newProperty.photos || [],
+      main_photo_index: (newProperty as any).mainPhotoIndex || 0,
+      notes: newProperty.notes,
+      tags: newProperty.tags || [],
+      created_at: newProperty.createdAt,
+    })
 
-    stmt.run(
-      newProperty.id,
-      newProperty.address,
-      newProperty.type,
-      newProperty.status,
-      newProperty.price,
-      newProperty.area,
-      newProperty.rooms || null,
-      newProperty.floor || null,
-      newProperty.totalFloors || null,
-      newProperty.owner || null,
-      newProperty.ownerPhone || null,
-      newProperty.description || null,
-      newProperty.inventory || null,
-      newProperty.hasFurniture ? 1 : 0,
-      JSON.stringify(newProperty.photos || []),
-      (newProperty as any).mainPhotoIndex || 0,
-      newProperty.notes || null,
-      JSON.stringify(newProperty.tags || []),
-      newProperty.createdAt,
-    )
+    if (error) throw error
 
     return newProperty
   }
 
-  updateProperty(id: string, updates: Partial<Property>) {
+  async updateProperty(id: string, updates: Partial<Property>) {
     const db = getDb()
-    const property = this.getProperty(id)
+    const property = await this.getProperty(id)
     if (!property) return null
 
     const updated = { ...property, ...updates }
 
-    const stmt = db.prepare(`
-      UPDATE crm_properties 
-      SET address = ?, type = ?, status = ?, price = ?, area = ?, rooms = ?, floor = ?, total_floors = ?, 
-          owner = ?, owner_phone = ?, description = ?, inventory = ?, has_furniture = ?, photos = ?, main_photo_index = ?, notes = ?, tags = ?
-      WHERE id = ?
-    `)
+    const { error } = await db
+      .from("crm_properties")
+      .update({
+        address: updated.address,
+        type: updated.type,
+        status: updated.status,
+        price: updated.price,
+        area: updated.area,
+        rooms: updated.rooms,
+        floor: updated.floor,
+        total_floors: updated.totalFloors,
+        owner: updated.owner,
+        owner_phone: updated.ownerPhone,
+        description: updated.description,
+        inventory: updated.inventory,
+        has_furniture: updated.hasFurniture,
+        photos: updated.photos || [],
+        main_photo_index: (updated as any).mainPhotoIndex || 0,
+        notes: updated.notes,
+        tags: updated.tags || [],
+      })
+      .eq("id", id)
 
-    stmt.run(
-      updated.address,
-      updated.type,
-      updated.status,
-      updated.price,
-      updated.area,
-      updated.rooms || null,
-      updated.floor || null,
-      updated.totalFloors || null,
-      updated.owner || null,
-      updated.ownerPhone || null,
-      updated.description || null,
-      updated.inventory || null,
-      updated.hasFurniture ? 1 : 0,
-      JSON.stringify(updated.photos || []),
-      (updated as any).mainPhotoIndex || 0,
-      updated.notes || null,
-      JSON.stringify(updated.tags || []),
-      id,
-    )
+    if (error) throw error
 
     return this.getProperty(id)
   }
 
-  deleteProperty(id: string) {
+  async deleteProperty(id: string) {
     const db = getDb()
-    const stmt = db.prepare("DELETE FROM crm_properties WHERE id = ?")
-    const result = stmt.run(id)
 
-    // Also delete related showings
-    const deleteShowings = db.prepare("DELETE FROM crm_showings WHERE object_id = ?")
-    deleteShowings.run(id)
+    await db.from("crm_showings").delete().eq("object_id", id)
 
-    return result.changes > 0
+    const { error } = await db.from("crm_properties").delete().eq("id", id)
+
+    return !error
   }
 
-  // Clients
-  getClients() {
+  async getClients(): Promise<Client[]> {
     const db = getDb()
-    const stmt = db.prepare("SELECT * FROM crm_clients ORDER BY created_at DESC")
-    const rows = stmt.all() as any[]
+    const { data, error } = await db
+      .from("crm_clients")
+      .select("*")
+      .order("created_at", { ascending: false })
 
-    return rows.map((row) => ({
-      ...row,
+    if (error || !data) return []
+
+    return data.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      phone: row.phone,
       callStatus: row.call_status,
+      type: row.type,
+      status: row.status,
+      budget: row.budget,
+      notes: row.notes,
       createdAt: row.created_at,
-    })) as Client[]
+    }))
   }
 
-  getClient(id: string) {
+  async getClient(id: string): Promise<Client | null> {
     const db = getDb()
-    const stmt = db.prepare("SELECT * FROM crm_clients WHERE id = ?")
-    const row = stmt.get(id) as any
+    const { data, error } = await db
+      .from("crm_clients")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle()
 
-    if (!row) return null
+    if (error || !data) return null
 
     return {
-      ...row,
-      callStatus: row.call_status,
-      createdAt: row.created_at,
-    } as Client
+      id: data.id,
+      name: data.name,
+      phone: data.phone,
+      callStatus: data.call_status,
+      type: data.type,
+      status: data.status,
+      budget: data.budget,
+      notes: data.notes,
+      createdAt: data.created_at,
+    }
   }
 
-  createClient(client: Omit<Client, "id" | "createdAt">) {
+  async createClient(client: Omit<Client, "id" | "createdAt">) {
     const db = getDb()
     const newClient = {
       ...client,
@@ -386,100 +356,116 @@ class DataStore {
       createdAt: new Date().toISOString(),
     }
 
-    const stmt = db.prepare(`
-      INSERT INTO crm_clients (id, name, phone, call_status, type, status, budget, notes, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
+    const { error } = await db.from("crm_clients").insert({
+      id: newClient.id,
+      name: newClient.name,
+      phone: newClient.phone,
+      call_status: newClient.callStatus,
+      type: newClient.type,
+      status: newClient.status,
+      budget: newClient.budget,
+      notes: newClient.notes,
+      created_at: newClient.createdAt,
+    })
 
-    stmt.run(
-      newClient.id,
-      newClient.name,
-      newClient.phone,
-      newClient.callStatus,
-      newClient.type,
-      newClient.status,
-      newClient.budget || null,
-      newClient.notes || null,
-      newClient.createdAt,
-    )
+    if (error) throw error
 
     return newClient
   }
 
-  updateClient(id: string, updates: Partial<Client>) {
+  async updateClient(id: string, updates: Partial<Client>) {
     const db = getDb()
-    const client = this.getClient(id)
+    const client = await this.getClient(id)
     if (!client) return null
 
     const updated = { ...client, ...updates }
 
-    const stmt = db.prepare(`
-      UPDATE crm_clients 
-      SET name = ?, phone = ?, call_status = ?, type = ?, status = ?, budget = ?, notes = ?
-      WHERE id = ?
-    `)
+    const { error } = await db
+      .from("crm_clients")
+      .update({
+        name: updated.name,
+        phone: updated.phone,
+        call_status: updated.callStatus,
+        type: updated.type,
+        status: updated.status,
+        budget: updated.budget,
+        notes: updated.notes,
+      })
+      .eq("id", id)
 
-    stmt.run(
-      updated.name,
-      updated.phone,
-      updated.callStatus,
-      updated.type,
-      updated.status,
-      updated.budget || null,
-      updated.notes || null,
-      id,
-    )
+    if (error) throw error
 
     return this.getClient(id)
   }
 
-  deleteClient(id: string) {
+  async deleteClient(id: string) {
     const db = getDb()
-    const stmt = db.prepare("DELETE FROM crm_clients WHERE id = ?")
-    const result = stmt.run(id)
-    return result.changes > 0
+    const { error } = await db.from("crm_clients").delete().eq("id", id)
+    return !error
   }
 
-  // Showings
-  getShowings() {
+  async getShowings(): Promise<Showing[]> {
     const db = getDb()
-    const stmt = db.prepare("SELECT * FROM crm_showings ORDER BY date DESC, time DESC")
-    const rows = stmt.all() as any[]
+    const { data, error } = await db
+      .from("crm_showings")
+      .select("*")
+      .order("date", { ascending: false })
+      .order("time", { ascending: false })
 
-    return rows.map((row) => ({
-      ...row,
+    if (error || !data) return []
+
+    return data.map((row: any) => ({
+      id: row.id,
       objectId: row.object_id,
+      date: row.date,
+      time: row.time,
+      notes: row.notes,
       createdAt: row.created_at,
-    })) as Showing[]
+    }))
   }
 
-  getShowing(id: string) {
+  async getShowing(id: string): Promise<Showing | null> {
     const db = getDb()
-    const stmt = db.prepare("SELECT * FROM crm_showings WHERE id = ?")
-    const row = stmt.get(id) as any
+    const { data, error } = await db
+      .from("crm_showings")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle()
 
-    if (!row) return null
+    if (error || !data) return null
 
     return {
-      ...row,
-      objectId: row.object_id,
-      createdAt: row.created_at,
-    } as Showing
+      id: data.id,
+      objectId: data.object_id,
+      date: data.date,
+      time: data.time,
+      notes: data.notes,
+      createdAt: data.created_at,
+    }
   }
 
-  getShowingsByObject(objectId: string) {
+  async getShowingsByObject(objectId: string): Promise<Showing[]> {
     const db = getDb()
-    const stmt = db.prepare("SELECT * FROM crm_showings WHERE object_id = ? ORDER BY date DESC, time DESC")
-    const rows = stmt.all(objectId) as any[]
+    const { data, error } = await db
+      .from("crm_showings")
+      .select("*")
+      .eq("object_id", objectId)
+      .order("date", { ascending: false })
+      .order("time", { ascending: false })
 
-    return rows.map((row) => ({
-      ...row,
+    if (error || !data) return []
+
+    return data.map((row: any) => ({
+      id: row.id,
       objectId: row.object_id,
+      date: row.date,
+      time: row.time,
+      notes: row.notes,
       createdAt: row.created_at,
-    })) as Showing[]
+    }))
   }
 
-  createShowing(showing: Omit<Showing, "id" | "createdAt">) {
+  async createShowing(showing: Omit<Showing, "id" | "createdAt">) {
     const db = getDb()
     const newShowing = {
       ...showing,
@@ -487,96 +473,100 @@ class DataStore {
       createdAt: new Date().toISOString(),
     }
 
-    const stmt = db.prepare(`
-      INSERT INTO crm_showings (id, object_id, date, time, notes, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `)
+    const { error } = await db.from("crm_showings").insert({
+      id: newShowing.id,
+      object_id: newShowing.objectId,
+      date: newShowing.date,
+      time: newShowing.time,
+      notes: newShowing.notes,
+      created_at: newShowing.createdAt,
+    })
 
-    stmt.run(
-      newShowing.id,
-      newShowing.objectId,
-      newShowing.date,
-      newShowing.time,
-      newShowing.notes || null,
-      newShowing.createdAt,
-    )
+    if (error) throw error
 
     return newShowing
   }
 
-  updateShowing(id: string, updates: Partial<Showing>) {
+  async updateShowing(id: string, updates: Partial<Showing>) {
     const db = getDb()
-    const showing = this.getShowing(id)
+    const showing = await this.getShowing(id)
     if (!showing) return null
 
     const updated = { ...showing, ...updates }
 
-    const stmt = db.prepare(`
-      UPDATE crm_showings 
-      SET object_id = ?, date = ?, time = ?, notes = ?
-      WHERE id = ?
-    `)
+    const { error } = await db
+      .from("crm_showings")
+      .update({
+        object_id: updated.objectId,
+        date: updated.date,
+        time: updated.time,
+        notes: updated.notes,
+      })
+      .eq("id", id)
 
-    stmt.run(updated.objectId, updated.date, updated.time, updated.notes || null, id)
+    if (error) throw error
 
     return this.getShowing(id)
   }
 
-  deleteShowing(id: string) {
+  async deleteShowing(id: string) {
     const db = getDb()
-    const stmt = db.prepare("DELETE FROM crm_showings WHERE id = ?")
-    const result = stmt.run(id)
-    return result.changes > 0
+    const { error } = await db.from("crm_showings").delete().eq("id", id)
+    return !error
   }
 
-  // Users
-  getUser(username: string) {
+  async getUser(username: string): Promise<User | null> {
     const db = getDb()
-    const stmt = db.prepare("SELECT * FROM crm_users WHERE username = ?")
-    const row = stmt.get(username) as any
+    const { data, error } = await db
+      .from("crm_users")
+      .select("*")
+      .eq("username", username)
+      .maybeSingle()
 
-    if (!row) return null
+    if (error || !data) return null
 
     return {
-      username: row.username,
-      password: row.password,
-      fullName: row.full_name,
-      email: row.email,
-      role: row.role || "user",
-    } as User
+      username: data.username,
+      password: data.password,
+      fullName: data.full_name,
+      email: data.email,
+      role: data.role || "user",
+    }
   }
 
-  verifyUserPassword(username: string, password: string): boolean {
-    const user = this.getUser(username)
+  async verifyUserPassword(username: string, password: string): Promise<boolean> {
+    const user = await this.getUser(username)
     if (!user) return false
     return verifyPassword(password, user.password)
   }
 
-  updateUser(username: string, updates: Partial<User>) {
+  async updateUser(username: string, updates: Partial<User>) {
     const db = getDb()
-    const user = this.getUser(username)
+    const user = await this.getUser(username)
     if (!user) return null
 
     const updated = { ...user, ...updates }
 
-    // Hash password if it's being updated
     if (updates.password) {
       updated.password = hashPassword(updates.password)
     }
 
-    const stmt = db.prepare(`
-      UPDATE crm_users 
-      SET password = ?, full_name = ?, email = ?, role = ?
-      WHERE username = ?
-    `)
+    const { error } = await db
+      .from("crm_users")
+      .update({
+        password: updated.password,
+        full_name: updated.fullName,
+        email: updated.email,
+        role: updated.role,
+      })
+      .eq("username", username)
 
-    stmt.run(updated.password, updated.fullName, updated.email, updated.role, username)
+    if (error) throw error
 
     return this.getUser(username)
   }
 }
 
-// Singleton instance
 let dataStore: DataStore | null = null
 
 export function getDataStore() {

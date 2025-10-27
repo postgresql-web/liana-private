@@ -6,7 +6,7 @@ export const runtime = "nodejs"
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     const dataStore = getDataStore()
-    const showings = dataStore.getShowingsByObject(params.id)
+    const showings = await dataStore.getShowingsByObject(params.id)
     return NextResponse.json(showings)
   } catch (error) {
     console.error("[v0] Get showings error:", error)
@@ -23,13 +23,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const dataStore = getDataStore()
-    const property = dataStore.getProperty(params.id)
+    const property = await dataStore.getProperty(params.id)
 
     if (!property) {
       return NextResponse.json({ error: "Объект не найден" }, { status: 404 })
     }
 
-    const newShowing = dataStore.createShowing({
+    const newShowing = await dataStore.createShowing({
       objectId: params.id,
       date: data.date,
       time: data.time,
